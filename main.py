@@ -1,51 +1,104 @@
+import os
+import streamlit as st
+from typing import Generator
 from openai import OpenAI
 from dotenv import load_dotenv
-import streamlit as st
-import os
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Get the NVIDIA API key from the environment variable
-nvidia_api_key = os.getenv("NVIDIA_API_KEY")
-if not nvidia_api_key:
+def generate_chat_responses(chat_completion) -> Generator[str, None, None]:
+    """Yield chat response content from the OpenAI API response."""
+    for chunk in chat_completion:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+st.set_page_config(page_icon="💬", layout="wide", page_title="Llama3 Chat App")
+
+# Load Nvidia API key from environment variable
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+if not NVIDIA_API_KEY:
     st.error("NVIDIA_API_KEY environment variable not found. Please set it in the .env file.")
     st.stop()
 
-# Initialize OpenAI client
-client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=nvidia_api_key,
+client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_API_KEY)
+
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Display model information
+st.sidebar.header("Model Information")
+st.sidebar.markdown(f"**Name:** Llama3-70b")
+st.sidebar.markdown(f"**Developer:** Meta")
+st.sidebar.markdown(f"**Description:** A powerful language model trained by Meta.")
+
+max_tokens_range = 4096  # Maximum tokens for Llama3-70b
+
+# Adjust max_tokens slider
+max_tokens = st.sidebar.slider(
+    "Max Tokens:",
+    min_value=512,
+    max_value=max_tokens_range,
+    value=1024,
+    step=512,
+    help=f"Adjust the maximum number of tokens (words) for the model's response. Max for Llama3-70b: {max_tokens_range}"
 )
 
-# Define the chat function
-def chatter(user_input):
-    completion = client.chat.completions.create(
-        model="meta/llama3-70b",
-        messages=[
-            {
-                "role": "user",
-                "content": user_input,
-            }
-        ],
-        temperature=1,
-        top_p=1,
-        max_tokens=1024,
-        stream=False,
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    avatar = '🤖' if message["role"] == "assistant" else '👨‍💻'
+    with st.chat_message(message["role"], avatar=avatar):
+        st.markdown(message["content"])
+
+if prompt := st.chat_input("Enter your prompt here..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    with st.chat_message("user", avatar='👨‍💻'):
+        st.markdown(prompt)
+
+    # Fetch response from OpenAI API
+    try:
+        chat_completion = client.chat.completions.create(
+            model="meta/llama3-70b",
+            messages=[
+                {
+                    "role": m["role"],
+                    "content": m["content"]
+                }
+                for m in st.session_state.messages
+            ],
+            max_tokens=max_tokens,
+            stream=True
+        )
+
+        # Use the generator function with st.write_stream
+        with st.chat_message("assistant", avatar="🤖"):
+            chat_responses_generator = generate_chat_responses(chat_completion)
+            full_response = st.write_stream(chat_responses_generator)
+    except Exception as e:
+        st.error(f"Error: {e}", icon="🚨")
+
+    # Append the full response to session_state.messages
+    if isinstance(full_response, str):
+        st.session_state.messages.append(
+            {"role": "assistant", "content": full_response})
+    else:
+        # Handle the case where full_response is not a string
+        combined_response = "\n".join(str(item) for item in full_response)
+        st.session_state.messages.append(
+            {"role": "assistant", "content": combined_response})
+
+# Add a clear chat button
+if st.sidebar.button("Clear Chat"):
+    st.session_state.messages = []
+
+# Add a download chat history button
+if st.sidebar.button("Download Chat History"):
+    chat_history = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in st.session_state.messages])
+    st.download_button(
+        label="Download Chat History",
+        data=chat_history,
+        file_name="chat_history.txt",
+        mime="text/plain",
     )
-    return completion.choices[0].message.content
-
-# Set the page title
-st.set_page_config(page_title="Your Favorite Chatbot")
-
-# Display the title
-st.title("Your Favorite Chatbot")
-
-# Get user input
-query = st.text_input("Enter your message", "How are you?")
-
-# When the user clicks the Submit button
-if st.button("Submit"):
-    if query:
-        output = chatter(query)
-        st.write(output)
