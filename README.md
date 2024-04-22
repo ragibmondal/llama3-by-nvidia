@@ -48,5 +48,4 @@ A Streamlit app for conversational AI using the Llama3-70b language model from M
 * If you encounter any errors, please report them as an issue on this repository.
 
 **License**
-
-MIT License
+Apache-2.0 license
