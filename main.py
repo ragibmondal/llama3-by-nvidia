@@ -33,6 +33,18 @@ st.sidebar.markdown(f"**Name:** Llama3-70b")
 st.sidebar.markdown(f"**Developer:** Meta")
 st.sidebar.markdown(f"**Description:** A powerful language model trained by Meta.")
 
+max_tokens_range = 4096  # Maximum tokens for Llama3-70b
+
+# Adjust max_tokens slider
+max_tokens = st.sidebar.slider(
+    "Max Tokens:",
+    min_value=512,
+    max_value=max_tokens_range,
+    value=1024,
+    step=512,
+    help=f"Adjust the maximum number of tokens (words) for the model's response. Max for Llama3-70b: {max_tokens_range}"
+)
+
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
     avatar = '🤖' if message["role"] == "assistant" else '👨‍💻'
@@ -56,6 +68,7 @@ if prompt := st.chat_input("Enter your prompt here..."):
                 }
                 for m in st.session_state.messages
             ],
+            max_tokens=max_tokens,
             stream=True
         )
 
